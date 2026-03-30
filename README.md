@@ -39,6 +39,8 @@ npm install
 npm run dev
 ```
 
+Open Swagger UI at `http://localhost:4000/api-docs` to inspect and test the API.
+
 ## Scripts
 
 - `npm run dev` - start development server (nodemon)

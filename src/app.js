@@ -34,7 +34,17 @@ function createApp() {
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
+  app.use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiSpec, {
+      explorer: true,
+      swaggerOptions: {
+        displayRequestDuration: true,
+        persistAuthorization: true,
+      },
+    }),
+  );
   app.use(env.API_PREFIX, apiRouter);
 
   app.use(notFoundHandler);
