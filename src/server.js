@@ -1,7 +1,7 @@
 const { createApp } = require('./app');
 const { env } = require('./config/env');
 const { logger } = require('./config/logger');
-const { pool } = require('./db/pool');
+const { prisma } = require('./db/prisma');
 
 const app = createApp();
 
@@ -13,8 +13,8 @@ const shutdown = async (signal) => {
   logger.info({ signal }, 'Graceful shutdown started');
 
   server.close(async () => {
-    await pool.end();
-    logger.info('HTTP server and DB pool closed');
+    await prisma.$disconnect();
+    logger.info('HTTP server and Prisma client closed');
     process.exit(0);
   });
 

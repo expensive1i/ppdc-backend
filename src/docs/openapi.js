@@ -3,10 +3,10 @@ const { env } = require('../config/env');
 const openApiSpec = {
   openapi: '3.0.3',
   info: {
-    title: 'PPDC Backend API',
+    title: 'PPDC Backend APIs',
     version: '1.0.0',
     description:
-      'REST API scaffold built with Express and PostgreSQL. Use Swagger UI to inspect and test the currently available endpoints.',
+      'REST API scaffold built with Express, Prisma, and Neon Postgres. Use Swagger UI to inspect and test the available endpoints.',
   },
   servers: [
     {
@@ -21,15 +21,42 @@ const openApiSpec = {
     },
     {
       name: 'Auth',
-      description: 'Authentication endpoints. Currently scaffolded and returning 501 responses.',
+      description: 'Authentication endpoints for registration and login.',
     },
     {
       name: 'Users',
-      description: 'User management endpoints. Currently scaffolded and returning 501 responses.',
+      description: 'User management endpoints.',
     },
   ],
   components: {
     schemas: {
+      UserRole: {
+        type: 'string',
+        enum: ['ADMIN', 'USER'],
+        example: 'USER',
+      },
+      CountryScope: {
+        type: 'string',
+        enum: ['UNITED_KINGDOM', 'UNITED_STATES', 'NIGERIA'],
+        example: 'NIGERIA',
+      },
+      UserAccessScope: {
+        type: 'object',
+        properties: {
+          allPlatforms: {
+            type: 'boolean',
+            example: false,
+          },
+          countries: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/CountryScope',
+            },
+            example: ['UNITED_STATES', 'NIGERIA'],
+          },
+        },
+        required: ['allPlatforms', 'countries'],
+      },
       ErrorResponse: {
         type: 'object',
         properties: {
@@ -53,7 +80,7 @@ const openApiSpec = {
         },
         required: ['success', 'message'],
       },
-      NotImplementedResponse: {
+      ValidationErrorResponse: {
         type: 'object',
         properties: {
           success: {
@@ -62,7 +89,23 @@ const openApiSpec = {
           },
           message: {
             type: 'string',
-            example: 'Not implemented: register',
+            example: 'Validation failed',
+          },
+          details: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  example: 'accessScope.countries',
+                },
+                message: {
+                  type: 'string',
+                  example: 'Select at least one country or enable all platforms',
+                },
+              },
+            },
           },
         },
         required: ['success', 'message'],
@@ -105,9 +148,56 @@ const openApiSpec = {
         },
         required: ['success', 'message', 'data'],
       },
-      RegisterRequest: {
+      User: {
         type: 'object',
         properties: {
+          id: {
+            type: 'string',
+            example: 'cm8w9kof70000v0q1l5p0x7mt',
+          },
+          firstName: {
+            type: 'string',
+            example: 'Jane',
+          },
+          lastName: {
+            type: 'string',
+            example: 'Doe',
+          },
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'user@example.com',
+          },
+          role: {
+            $ref: '#/components/schemas/UserRole',
+          },
+          accessScope: {
+            $ref: '#/components/schemas/UserAccessScope',
+          },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+            example: '2026-03-30T13:12:10.000Z',
+          },
+          updatedAt: {
+            type: 'string',
+            format: 'date-time',
+            example: '2026-03-30T13:12:10.000Z',
+          },
+        },
+        required: ['id', 'firstName', 'lastName', 'email', 'role', 'accessScope', 'createdAt', 'updatedAt'],
+      },
+      CreateUserRequest: {
+        type: 'object',
+        properties: {
+          firstName: {
+            type: 'string',
+            example: 'Jane',
+          },
+          lastName: {
+            type: 'string',
+            example: 'Doe',
+          },
           email: {
             type: 'string',
             format: 'email',
@@ -119,13 +209,45 @@ const openApiSpec = {
             minLength: 8,
             example: 'strongPassword123',
           },
-          fullName: {
-            type: 'string',
-            minLength: 2,
-            example: 'Jane Doe',
+          role: {
+            $ref: '#/components/schemas/UserRole',
+          },
+          accessScope: {
+            $ref: '#/components/schemas/UserAccessScope',
           },
         },
-        required: ['email', 'password', 'fullName'],
+        required: ['firstName', 'lastName', 'email', 'password', 'accessScope'],
+      },
+      RegisterRequest: {
+        type: 'object',
+        properties: {
+          firstName: {
+            type: 'string',
+            example: 'Jane',
+          },
+          lastName: {
+            type: 'string',
+            example: 'Doe',
+          },
+          email: {
+            type: 'string',
+            format: 'email',
+            example: 'user@example.com',
+          },
+          password: {
+            type: 'string',
+            format: 'password',
+            minLength: 8,
+            example: 'strongPassword123',
+          },
+          role: {
+            $ref: '#/components/schemas/UserRole',
+          },
+          accessScope: {
+            $ref: '#/components/schemas/UserAccessScope',
+          },
+        },
+        required: ['firstName', 'lastName', 'email', 'password', 'accessScope'],
       },
       LoginRequest: {
         type: 'object',
@@ -143,33 +265,137 @@ const openApiSpec = {
         },
         required: ['email', 'password'],
       },
+      AuthTokens: {
+        type: 'object',
+        properties: {
+          accessToken: {
+            type: 'string',
+            example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          },
+          refreshToken: {
+            type: 'string',
+            example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          },
+          tokenType: {
+            type: 'string',
+            example: 'Bearer',
+          },
+          accessTokenExpiresIn: {
+            type: 'string',
+            example: '15m',
+          },
+          refreshTokenExpiresIn: {
+            type: 'string',
+            example: '7d',
+          },
+        },
+        required: ['accessToken', 'refreshToken', 'tokenType'],
+      },
+      CreateUserResponse: {
+        type: 'object',
+        properties: {
+          success: {
+            type: 'boolean',
+            example: true,
+          },
+          message: {
+            type: 'string',
+            example: 'User created successfully',
+          },
+          data: {
+            $ref: '#/components/schemas/User',
+          },
+        },
+        required: ['success', 'message', 'data'],
+      },
       UserListResponse: {
         type: 'object',
         properties: {
           success: {
             type: 'boolean',
-            example: false,
+            example: true,
           },
           message: {
             type: 'string',
-            example: 'Not implemented: list users',
+            example: 'Users fetched successfully',
+          },
+          data: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/User',
+            },
           },
         },
-        required: ['success', 'message'],
+        required: ['success', 'message', 'data'],
       },
       UserByIdResponse: {
         type: 'object',
         properties: {
           success: {
             type: 'boolean',
-            example: false,
+            example: true,
           },
           message: {
             type: 'string',
-            example: 'Not implemented: get user 1',
+            example: 'User fetched successfully',
+          },
+          data: {
+            $ref: '#/components/schemas/User',
           },
         },
-        required: ['success', 'message'],
+        required: ['success', 'message', 'data'],
+      },
+      RegisterResponse: {
+        type: 'object',
+        properties: {
+          success: {
+            type: 'boolean',
+            example: true,
+          },
+          message: {
+            type: 'string',
+            example: 'User registered successfully',
+          },
+          data: {
+            type: 'object',
+            properties: {
+              user: {
+                $ref: '#/components/schemas/User',
+              },
+              tokens: {
+                $ref: '#/components/schemas/AuthTokens',
+              },
+            },
+            required: ['user', 'tokens'],
+          },
+        },
+        required: ['success', 'message', 'data'],
+      },
+      LoginResponse: {
+        type: 'object',
+        properties: {
+          success: {
+            type: 'boolean',
+            example: true,
+          },
+          message: {
+            type: 'string',
+            example: 'Login successful',
+          },
+          data: {
+            type: 'object',
+            properties: {
+              user: {
+                $ref: '#/components/schemas/User',
+              },
+              tokens: {
+                $ref: '#/components/schemas/AuthTokens',
+              },
+            },
+            required: ['user', 'tokens'],
+          },
+        },
+        required: ['success', 'message', 'data'],
       },
     },
     parameters: {
@@ -177,11 +403,10 @@ const openApiSpec = {
         name: 'userId',
         in: 'path',
         required: true,
-        description: 'Numeric user identifier.',
+        description: 'User identifier.',
         schema: {
-          type: 'integer',
-          minimum: 1,
-          example: 1,
+          type: 'string',
+          example: 'cm8w9kof70000v0q1l5p0x7mt',
         },
       },
     },
@@ -210,7 +435,7 @@ const openApiSpec = {
       post: {
         tags: ['Auth'],
         summary: 'Register a new user',
-        description: 'Scaffolded endpoint for user registration. Currently returns a 501 response.',
+        description: 'Creates a new user record with role and access scope, then returns authentication tokens.',
         requestBody: {
           required: true,
           content: {
@@ -222,12 +447,32 @@ const openApiSpec = {
           },
         },
         responses: {
-          501: {
-            description: 'Endpoint scaffold exists but is not implemented yet',
+          201: {
+            description: 'User registered successfully',
             content: {
               'application/json': {
                 schema: {
-                  $ref: '#/components/schemas/NotImplementedResponse',
+                  $ref: '#/components/schemas/RegisterResponse',
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation failed',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ValidationErrorResponse',
+                },
+              },
+            },
+          },
+          409: {
+            description: 'A user with this email already exists',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse',
                 },
               },
             },
@@ -239,7 +484,7 @@ const openApiSpec = {
       post: {
         tags: ['Auth'],
         summary: 'Log in a user',
-        description: 'Scaffolded endpoint for user login. Currently returns a 501 response.',
+        description: 'Authenticates an existing user using email and password.',
         requestBody: {
           required: true,
           content: {
@@ -251,12 +496,32 @@ const openApiSpec = {
           },
         },
         responses: {
-          501: {
-            description: 'Endpoint scaffold exists but is not implemented yet',
+          200: {
+            description: 'Login successful',
             content: {
               'application/json': {
                 schema: {
-                  $ref: '#/components/schemas/NotImplementedResponse',
+                  $ref: '#/components/schemas/LoginResponse',
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation failed',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ValidationErrorResponse',
+                },
+              },
+            },
+          },
+          401: {
+            description: 'Invalid credentials',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse',
                 },
               },
             },
@@ -265,13 +530,60 @@ const openApiSpec = {
       },
     },
     '/users': {
+      post: {
+        tags: ['Users'],
+        summary: 'Create a user',
+        description: 'Creates a user with identity details, role, and access scope selections.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/CreateUserRequest',
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'User created successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/CreateUserResponse',
+                },
+              },
+            },
+          },
+          400: {
+            description: 'Validation failed',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ValidationErrorResponse',
+                },
+              },
+            },
+          },
+          409: {
+            description: 'A user with this email already exists',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse',
+                },
+              },
+            },
+          },
+        },
+      },
       get: {
         tags: ['Users'],
         summary: 'List users',
-        description: 'Scaffolded endpoint for fetching users. Currently returns a 501 response.',
+        description: 'Returns all users ordered by creation date.',
         responses: {
-          501: {
-            description: 'Endpoint scaffold exists but is not implemented yet',
+          200: {
+            description: 'Users fetched successfully',
             content: {
               'application/json': {
                 schema: {
@@ -287,15 +599,25 @@ const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'Get user by ID',
-        description: 'Scaffolded endpoint for fetching a single user. Currently returns a 501 response.',
+        description: 'Returns a single user by identifier.',
         parameters: [{ $ref: '#/components/parameters/UserIdParam' }],
         responses: {
-          501: {
-            description: 'Endpoint scaffold exists but is not implemented yet',
+          200: {
+            description: 'User fetched successfully',
             content: {
               'application/json': {
                 schema: {
                   $ref: '#/components/schemas/UserByIdResponse',
+                },
+              },
+            },
+          },
+          404: {
+            description: 'User not found',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse',
                 },
               },
             },
