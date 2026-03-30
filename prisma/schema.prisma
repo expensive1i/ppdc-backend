@@ -17,6 +17,32 @@ enum CountryScope {
   NIGERIA
 }
 
+enum ContentCountry {
+  UK
+  US
+  NIGERIA
+}
+
+enum ContentResource {
+  BLOGS
+  UPDATES
+  PROGRAMS
+  CAREERS
+  HERO_CONTENTS
+  RESOURCES
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ContactSubmissionStatus {
+  NEW
+  ACKNOWLEDGED
+}
+
 model User {
   id            String         @id @default(cuid())
   firstName     String         @map("first_name")
@@ -25,10 +51,75 @@ model User {
   role          UserRole       @default(USER)
   allPlatforms  Boolean        @default(false) @map("all_platforms")
   countryScopes CountryScope[] @default([]) @map("country_scopes")
+  isActive      Boolean        @default(true) @map("is_active")
   passwordHash  String         @map("password_hash")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
+  sessions      UserSession[]
+  createdContentItems ContentItem[] @relation("ContentItemsCreatedBy")
+  updatedContentItems ContentItem[] @relation("ContentItemsUpdatedBy")
 
   @@index([role], map: "users_role_idx")
   @@map("users")
+}
+
+model UserSession {
+  id                 String    @id @default(cuid())
+  userId             String    @map("user_id")
+  hashedRefreshToken String    @map("hashed_refresh_token")
+  expiresAt          DateTime  @map("expires_at")
+  revokedAt          DateTime? @map("revoked_at")
+  lastUsedAt         DateTime? @map("last_used_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "user_sessions_user_id_idx")
+  @@map("user_sessions")
+}
+
+model ContentItem {
+  id          String          @id @default(cuid())
+  country     ContentCountry
+  resource    ContentResource
+  title       String
+  slug        String
+  type        String
+  category    String
+  tags        String[]        @default([])
+  summary     String
+  description String?
+  imageUrl    String          @map("image_url")
+  author      String
+  publishDate DateTime?       @map("publish_date") @db.Date
+  readingTime String          @map("reading_time")
+  content     String
+  status      ContentStatus   @default(DRAFT)
+  createdById String?         @map("created_by_id")
+  updatedById String?         @map("updated_by_id")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdBy   User?           @relation("ContentItemsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?           @relation("ContentItemsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([country, resource, slug], map: "content_items_country_resource_slug_key")
+  @@index([country, resource, status], map: "content_items_country_resource_status_idx")
+  @@index([country, resource, publishDate], map: "content_items_country_resource_publish_date_idx")
+  @@map("content_items")
+}
+
+model ContactSubmission {
+  id        String                  @id @default(cuid())
+  country   ContentCountry
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    ContactSubmissionStatus @default(NEW)
+  createdAt DateTime                @default(now()) @map("created_at")
+  updatedAt DateTime                @updatedAt @map("updated_at")
+
+  @@index([country, status], map: "contact_submissions_country_status_idx")
+  @@index([createdAt], map: "contact_submissions_created_at_idx")
+  @@map("contact_submissions")
 }

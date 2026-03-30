@@ -12,16 +12,22 @@ function mapZodIssues(issues) {
 function validateRequest(schemas) {
   return (req, _res, next) => {
     try {
+      req.validated = req.validated || {};
+
       if (schemas.body) {
-        req.body = schemas.body.parse(req.body);
+        const parsedBody = schemas.body.parse(req.body);
+        req.body = parsedBody;
+        req.validated.body = parsedBody;
       }
 
       if (schemas.params) {
-        req.params = schemas.params.parse(req.params);
+        const parsedParams = schemas.params.parse(req.params);
+        req.params = parsedParams;
+        req.validated.params = parsedParams;
       }
 
       if (schemas.query) {
-        req.query = schemas.query.parse(req.query);
+        req.validated.query = schemas.query.parse(req.query);
       }
 
       next();

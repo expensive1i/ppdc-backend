@@ -1,21 +1,18 @@
 const { z } = require('zod');
+const { MANAGED_REGIONS, USER_ROLES, USER_SORT_FIELDS } = require('./users.constants');
 
-const userRoleSchema = z.enum(['ADMIN', 'USER']);
-const countryScopeSchema = z.enum(['UNITED_KINGDOM', 'UNITED_STATES', 'NIGERIA']);
+const userRoleSchema = z.enum(USER_ROLES);
+const managedRegionSchema = z.enum(MANAGED_REGIONS);
 
-const accessScopeSchema = z
-  .object({
-    allPlatforms: z.boolean().default(false),
-    countries: z.array(countryScopeSchema).default([]),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.allPlatforms && value.countries.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['countries'],
-        message: 'Select at least one country or enable all platforms',
-      });
+const managedRegionsSchema = z
+  .array(managedRegionSchema)
+  .min(1, 'Select at least one managed region')
+  .transform((regions) => {
+    if (regions.includes('all')) {
+      return ['all'];
     }
+
+    return [...new Set(regions)];
   });
 
 const createUserSchema = z.object({
@@ -24,7 +21,35 @@ const createUserSchema = z.object({
   email: z.email().transform((value) => value.trim().toLowerCase()),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   role: userRoleSchema.default('USER'),
-  accessScope: accessScopeSchema,
+  managedRegions: managedRegionsSchema,
+});
+
+const updateUserSchema = z
+  .object({
+    firstName: z.string().trim().min(2, 'First name must be at least 2 characters').optional(),
+    lastName: z.string().trim().min(2, 'Last name must be at least 2 characters').optional(),
+    email: z
+      .email()
+      .transform((value) => value.trim().toLowerCase())
+      .optional(),
+    role: userRoleSchema.optional(),
+    managedRegions: managedRegionsSchema.optional(),
+  })
+  .refine((payload) => Object.keys(payload).length > 0, {
+    message: 'Provide at least one field to update',
+  });
+
+const updateUserStatusSchema = z.object({
+  isActive: z.boolean(),
+});
+
+const listUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+  search: z.string().trim().default(''),
+  region: managedRegionSchema.optional(),
+  sortBy: z.enum(USER_SORT_FIELDS).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
 const userIdParamSchema = z.object({
@@ -32,9 +57,12 @@ const userIdParamSchema = z.object({
 });
 
 module.exports = {
-  accessScopeSchema,
-  countryScopeSchema,
   createUserSchema,
+  listUsersQuerySchema,
+  managedRegionSchema,
+  managedRegionsSchema,
   userIdParamSchema,
   userRoleSchema,
+  updateUserSchema,
+  updateUserStatusSchema,
 };

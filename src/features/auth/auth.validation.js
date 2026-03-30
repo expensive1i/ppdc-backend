@@ -8,4 +8,8 @@ const loginSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-module.exports = { registerSchema, loginSchema };
+const refreshSessionSchema = z.object({
+  refreshToken: z.string().trim().min(1, 'Refresh token is required'),
+});
+
+module.exports = { loginSchema, refreshSessionSchema, registerSchema };
