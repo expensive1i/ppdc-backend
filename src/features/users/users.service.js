@@ -10,6 +10,7 @@ const userPublicSelect = {
 	lastName: true,
 	email: true,
 	role: true,
+	managementAreas: true,
 	allPlatforms: true,
 	countryScopes: true,
 	isActive: true,
@@ -39,6 +40,15 @@ function mapManagedRegionsFromDb(user) {
 	return user.countryScopes.map((countryScope) => REGION_BY_COUNTRY_SCOPE[countryScope]);
 }
 
+function normalizeManagementAreasForRole(managementAreas, role) {
+	const uniqueManagementAreas = [...new Set(managementAreas || [])];
+	const normalizedAreas = role === 'ADMIN'
+		? uniqueManagementAreas
+		: uniqueManagementAreas.filter((area) => area !== 'USER_MANAGEMENT');
+
+	return normalizedAreas;
+}
+
 function mapUserToPublic(user) {
 	return {
 		id: user.id,
@@ -47,6 +57,7 @@ function mapUserToPublic(user) {
 		lastName: user.lastName,
 		email: user.email,
 		role: user.role,
+		managementAreas: user.managementAreas,
 		managedRegions: mapManagedRegionsFromDb(user),
 		isActive: user.isActive,
 		createdAt: user.createdAt,
@@ -81,12 +92,14 @@ async function createUser(data) {
 
 	const passwordHash = await bcrypt.hash(data.password, 12);
 	const dbManagedRegions = mapManagedRegionsToDb(data.managedRegions);
+	const managementAreas = normalizeManagementAreasForRole(data.managementAreas, data.role);
 	const createdUser = await prisma.user.create({
 		data: {
 			firstName: data.firstName,
 			lastName: data.lastName,
 			email: data.email,
 			role: data.role,
+			managementAreas,
 			allPlatforms: dbManagedRegions.allPlatforms,
 			countryScopes: dbManagedRegions.countryScopes,
 			isActive: true,
@@ -168,11 +181,20 @@ async function getUserById(userId) {
 }
 
 async function updateUser(userId, data) {
-	await getUserById(userId);
+	const existingUser = await prisma.user.findUnique({
+		where: { id: userId },
+		select: userPublicSelect,
+	});
+
+	if (!existingUser) {
+		throw new AppError('User not found', 404);
+	}
 
 	if (data.email) {
 		await ensureEmailBelongsToCurrentUserOrIsAvailable(data.email, userId);
 	}
+
+	const nextRole = data.role ?? existingUser.role;
 
 	const updateData = {
 		...(data.firstName ? { firstName: data.firstName } : {}),
@@ -180,6 +202,13 @@ async function updateUser(userId, data) {
 		...(data.email ? { email: data.email } : {}),
 		...(data.role ? { role: data.role } : {}),
 	};
+
+	if (data.managementAreas || data.role) {
+		updateData.managementAreas = normalizeManagementAreasForRole(
+			data.managementAreas ?? existingUser.managementAreas,
+			nextRole,
+		);
+	}
 
 	if (data.managedRegions) {
 		const dbManagedRegions = mapManagedRegionsToDb(data.managedRegions);
@@ -196,8 +225,12 @@ async function updateUser(userId, data) {
 	return mapUserToPublic(updatedUser);
 }
 
-async function updateUserStatus(userId, isActive) {
+async function updateUserStatus(userId, isActive, actorUserId) {
 	await getUserById(userId);
+
+	if (!isActive && userId === actorUserId) {
+		throw new AppError('You cannot deactivate your own account while signed in', 400);
+	}
 
 	const updatedUser = await prisma.user.update({
 		where: { id: userId },
@@ -208,8 +241,12 @@ async function updateUserStatus(userId, isActive) {
 	return mapUserToPublic(updatedUser);
 }
 
-async function deleteUser(userId) {
+async function deleteUser(userId, actorUserId) {
 	await getUserById(userId);
+
+	if (userId === actorUserId) {
+		throw new AppError('You cannot delete your own account while signed in', 400);
+	}
 
 	await prisma.user.delete({
 		where: { id: userId },
@@ -224,6 +261,7 @@ module.exports = {
 	mapManagedRegionsFromDb,
 	mapManagedRegionsToDb,
 	mapUserToPublic,
+	normalizeManagementAreasForRole,
 	updateUser,
 	updateUserStatus,
 	userPublicSelect,

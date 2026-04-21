@@ -11,6 +11,11 @@ enum UserRole {
   USER
 }
 
+enum ManagementArea {
+  USER_MANAGEMENT
+  CAMPAIGN_MANAGEMENT
+}
+
 enum CountryScope {
   UNITED_KINGDOM
   UNITED_STATES
@@ -49,6 +54,7 @@ model User {
   lastName      String         @map("last_name")
   email         String         @unique
   role          UserRole       @default(USER)
+  managementAreas ManagementArea[] @default([USER_MANAGEMENT, CAMPAIGN_MANAGEMENT]) @map("management_areas")
   allPlatforms  Boolean        @default(false) @map("all_platforms")
   countryScopes CountryScope[] @default([]) @map("country_scopes")
   isActive      Boolean        @default(true) @map("is_active")
@@ -56,6 +62,7 @@ model User {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
   sessions      UserSession[]
+  passwordResetTokens PasswordResetToken[]
   createdContentItems ContentItem[] @relation("ContentItemsCreatedBy")
   updatedContentItems ContentItem[] @relation("ContentItemsUpdatedBy")
 
@@ -76,6 +83,21 @@ model UserSession {
 
   @@index([userId], map: "user_sessions_user_id_idx")
   @@map("user_sessions")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  hashedOtp String   @map("hashed_otp")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "password_reset_tokens_user_id_idx")
+  @@index([expiresAt], map: "password_reset_tokens_expires_at_idx")
+  @@map("password_reset_tokens")
 }
 
 model ContentItem {

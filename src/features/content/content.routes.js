@@ -30,7 +30,7 @@ const {
 
 const contentRouter = Router();
 
-contentRouter.use(authenticate, authorizeRoles('ADMIN'));
+contentRouter.use(authenticate, authorizeRoles('ADMIN', 'USER'));
 
 contentRouter.get(
   '/:country/contacts',

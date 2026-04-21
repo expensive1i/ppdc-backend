@@ -1,9 +1,34 @@
+const { sendMail } = require('../../core/services/mailer');
+const { buildWelcomeUserEmail } = require('./users.email');
 const userService = require('./users.service');
 
 async function createUser(req, res) {
   const user = await userService.createUser(req.body);
 
-  return res.status(201).json(user);
+  let welcomeEmailSent = false;
+
+  try {
+    const emailContent = buildWelcomeUserEmail({
+      user,
+      password: req.body.password,
+    });
+
+    await sendMail({
+      to: user.email,
+      subject: emailContent.subject,
+      html: emailContent.html,
+      text: emailContent.text,
+    });
+
+    welcomeEmailSent = true;
+  } catch (error) {
+    req.log.error({ err: error, email: user.email }, 'Failed to send welcome email to new user');
+  }
+
+  return res.status(201).json({
+    ...user,
+    welcomeEmailSent,
+  });
 }
 
 async function listUsers(req, res) {
@@ -25,13 +50,13 @@ async function updateUser(req, res) {
 }
 
 async function updateUserStatus(req, res) {
-  const user = await userService.updateUserStatus(req.params.userId, req.body.isActive);
+  const user = await userService.updateUserStatus(req.params.userId, req.body.isActive, req.auth.user.id);
 
   return res.status(200).json(user);
 }
 
 async function deleteUser(req, res) {
-  await userService.deleteUser(req.params.userId);
+  await userService.deleteUser(req.params.userId, req.auth.user.id);
 
   return res.status(204).send();
 }

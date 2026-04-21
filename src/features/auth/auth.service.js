@@ -5,7 +5,14 @@ const jwt = require('jsonwebtoken');
 const { AppError } = require('../../core/errors/app-error');
 const { env } = require('../../config/env');
 const { prisma } = require('../../db/prisma');
+const { sendMail } = require('../../core/services/mailer');
 const { createUser, mapUserToPublic, userPublicSelect } = require('../users/users.service');
+
+const PASSWORD_RESET_OTP_TTL_MINUTES = 15;
+
+function hashValue(value) {
+	return crypto.createHash('sha256').update(value).digest('hex');
+}
 
 function toSeconds(expiresIn) {
 	const match = /^(\d+)([smhd])$/.exec(expiresIn);
@@ -31,7 +38,94 @@ function buildExpiresAt(expiresIn) {
 }
 
 function hashToken(token) {
-	return crypto.createHash('sha256').update(token).digest('hex');
+	return hashValue(token);
+}
+
+function generateOtp() {
+	return crypto.randomInt(100000, 1000000).toString();
+}
+
+function buildPasswordResetExpiry() {
+	return new Date(Date.now() + PASSWORD_RESET_OTP_TTL_MINUTES * 60 * 1000);
+}
+
+function buildResetEmailHtml({ firstName, otp }) {
+	return `
+		<div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+			<p>Hello ${firstName || 'there'},</p>
+			<p>We received a request to reset your PPDC Admin password.</p>
+			<p>Your one-time password is:</p>
+			<p style="font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #0b4f4a;">${otp}</p>
+			<p>This code expires in ${PASSWORD_RESET_OTP_TTL_MINUTES} minutes.</p>
+			<p>If you did not request this password reset, you can ignore this email.</p>
+			<p style="margin-top: 24px;">PPDC Support Team</p>
+		</div>
+	`;
+}
+
+async function createPasswordResetOtp(user) {
+	const otp = generateOtp();
+
+	await prisma.passwordResetToken.updateMany({
+		where: {
+			userId: user.id,
+			usedAt: null,
+		},
+		data: {
+			usedAt: new Date(),
+		},
+	});
+
+	await prisma.passwordResetToken.create({
+		data: {
+			userId: user.id,
+			hashedOtp: hashValue(otp),
+			expiresAt: buildPasswordResetExpiry(),
+		},
+	});
+
+	return otp;
+}
+
+async function getValidPasswordResetToken(email, otp) {
+	const user = await prisma.user.findUnique({
+		where: { email },
+		select: {
+			...userPublicSelect,
+			firstName: true,
+			lastName: true,
+			passwordHash: true,
+		},
+	});
+
+	if (!user) {
+		throw new AppError('Invalid reset code or email', 400);
+	}
+
+	if (!user.isActive) {
+		throw new AppError('User account is inactive', 403);
+	}
+
+	const token = await prisma.passwordResetToken.findFirst({
+		where: {
+			userId: user.id,
+			hashedOtp: hashValue(otp),
+			usedAt: null,
+		},
+		orderBy: {
+			createdAt: 'desc',
+		},
+	});
+
+	if (!token) {
+		throw new AppError('Invalid reset code or email', 400);
+	}
+
+	if (token.expiresAt.getTime() < Date.now()) {
+		throw new AppError('Reset code has expired', 400);
+	}
+
+	return { token, user };
 }
 
 function buildAuthPayload(user, sessionId) {
@@ -121,6 +215,76 @@ async function loginUser(credentials) {
 	const safeUser = mapUserToPublic(user);
 
 	return issueAuthResponse(safeUser);
+}
+
+async function requestPasswordReset(email) {
+	const user = await prisma.user.findUnique({
+		where: { email },
+		select: {
+			id: true,
+			firstName: true,
+			lastName: true,
+			email: true,
+			role: true,
+			isActive: true,
+		},
+	});
+
+	if (!user || !user.isActive) {
+		return {
+			message: 'If an account with that email exists, a reset code has been sent.',
+		};
+	}
+
+	const otp = await createPasswordResetOtp(user);
+
+	await sendMail({
+		to: user.email,
+		subject: 'PPDC Admin password reset code',
+		html: buildResetEmailHtml({
+			firstName: user.firstName,
+			otp,
+		}),
+		text: `Your PPDC Admin password reset code is ${otp}. It expires in ${PASSWORD_RESET_OTP_TTL_MINUTES} minutes.`,
+	});
+
+	return {
+		message: 'If an account with that email exists, a reset code has been sent.',
+		verificationExpiresInMinutes: PASSWORD_RESET_OTP_TTL_MINUTES,
+	};
+}
+
+async function verifyPasswordResetOtp(payload) {
+	await getValidPasswordResetToken(payload.email, payload.otp);
+
+	return {
+		message: 'Reset code verified successfully.',
+		verified: true,
+	};
+}
+
+async function resetPassword(payload) {
+	const { token, user } = await getValidPasswordResetToken(payload.email, payload.otp);
+	const passwordHash = await bcrypt.hash(payload.password, 12);
+
+	await prisma.$transaction([
+		prisma.user.update({
+			where: { id: user.id },
+			data: { passwordHash },
+		}),
+		prisma.passwordResetToken.update({
+			where: { id: token.id },
+			data: { usedAt: new Date() },
+		}),
+		prisma.userSession.updateMany({
+			where: { userId: user.id, revokedAt: null },
+			data: { revokedAt: new Date() },
+		}),
+	]);
+
+	return {
+		message: 'Password reset successful. Please sign in with your new password.',
+	};
 }
 
 async function getCurrentUser(userId) {
@@ -213,4 +377,13 @@ async function logoutSession(refreshToken) {
 	}
 }
 
-module.exports = { getCurrentUser, loginUser, logoutSession, refreshSession, registerUser };
+module.exports = {
+	getCurrentUser,
+	loginUser,
+	logoutSession,
+	refreshSession,
+	registerUser,
+	requestPasswordReset,
+	resetPassword,
+	verifyPasswordResetOtp,
+};

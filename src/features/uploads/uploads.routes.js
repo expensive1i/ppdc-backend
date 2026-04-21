@@ -8,7 +8,7 @@ const { imageUpload } = require('./uploads.middleware');
 
 const uploadsRouter = Router();
 
-uploadsRouter.use(authenticate, authorizeRoles('ADMIN'));
+uploadsRouter.use(authenticate, authorizeRoles('ADMIN', 'USER'));
 uploadsRouter.post('/image', imageUpload.single('image'), asyncHandler(uploadImage));
 
 module.exports = { uploadsRouter };
