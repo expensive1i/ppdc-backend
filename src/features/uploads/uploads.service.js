@@ -48,6 +48,15 @@ async function uploadImage(file, folder = 'content') {
       },
       (error, response) => {
         if (error) {
+          if (error.http_code === 403) {
+            reject(new AppError(
+              'Cloudinary rejected the upload. Check API key permissions or use a full-access key.',
+              502,
+              error,
+            ));
+            return;
+          }
+
           reject(new AppError('Image upload failed', 502, error));
           return;
         }

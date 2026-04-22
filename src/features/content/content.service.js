@@ -138,6 +138,22 @@ function formatPublishDate(value) {
   return value ? value.toISOString().slice(0, 10) : null;
 }
 
+function normalizeReadingTime(value) {
+  const normalizedValue = String(value ?? '').trim();
+
+  if (!normalizedValue) {
+    return normalizedValue;
+  }
+
+  const digitMatch = normalizedValue.match(/\d+/);
+
+  if (digitMatch) {
+    return `${digitMatch[0]} min read`;
+  }
+
+  return normalizedValue;
+}
+
 function mapContentItem(record) {
   return {
     id: record.id,
@@ -153,7 +169,7 @@ function mapContentItem(record) {
     imageUrl: record.imageUrl,
     author: record.author,
     publishDate: formatPublishDate(record.publishDate),
-    readingTime: record.readingTime,
+    readingTime: normalizeReadingTime(record.readingTime),
     content: record.content,
     status: CONTENT_STATUS_VALUE_BY_ENUM[record.status],
     createdAt: record.createdAt,
@@ -251,12 +267,12 @@ function buildContentCreateData(payload, actor) {
     type: payload.type.trim(),
     category: payload.category.trim(),
     tags: payload.tags,
-    summary: payload.summary.trim(),
+    summary: payload.summary?.trim() || null,
     description: payload.description?.trim() || null,
     imageUrl: payload.imageUrl,
     author: payload.author?.trim() || actor.name,
     publishDate: buildPublishDate(payload.publishDate),
-    readingTime: payload.readingTime.trim(),
+    readingTime: normalizeReadingTime(payload.readingTime),
     content: sanitizedContent,
     status: CONTENT_STATUS_ENUM_BY_VALUE[payload.status],
     createdById: actor.id,
@@ -290,7 +306,7 @@ function buildContentUpdateData(payload, actor) {
   }
 
   if (payload.summary !== undefined) {
-    updateData.summary = payload.summary.trim();
+    updateData.summary = payload.summary?.trim() || null;
   }
 
   if (payload.description !== undefined) {
@@ -310,7 +326,7 @@ function buildContentUpdateData(payload, actor) {
   }
 
   if (payload.readingTime !== undefined) {
-    updateData.readingTime = payload.readingTime.trim();
+    updateData.readingTime = normalizeReadingTime(payload.readingTime);
   }
 
   if (payload.content !== undefined) {

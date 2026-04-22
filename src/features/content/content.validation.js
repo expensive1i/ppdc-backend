@@ -45,18 +45,29 @@ const publishDateSchema = z
   .optional()
   .nullable();
 
+const readingTimeSchema = z.preprocess(
+  (value) => {
+    if (typeof value === 'number') {
+      return String(value);
+    }
+
+    return value;
+  },
+  z.string().trim().min(1).max(40),
+);
+
 const contentPayloadShape = {
   title: z.string().trim().min(3).max(200),
   slug: z.string().trim().min(3).max(220).optional(),
   type: z.string().trim().min(1).max(80),
   category: z.string().trim().min(1).max(120),
   tags: tagsSchema.default([]),
-  summary: z.string().trim().min(3).max(500),
+  summary: z.string().trim().min(3).max(500).optional().nullable(),
   description: z.string().trim().max(500).optional().nullable(),
   imageUrl: z.url().max(2000),
   author: z.string().trim().min(2).max(120).optional(),
   publishDate: publishDateSchema,
-  readingTime: z.string().trim().min(2).max(40),
+  readingTime: readingTimeSchema,
   content: z.string().trim().min(1),
   status: contentStatusSchema.default('draft'),
 };
