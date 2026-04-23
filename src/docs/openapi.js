@@ -25,6 +25,8 @@ const openApiSpec = {
         'Country content management for blogs, updates, programs, careers, hero contents, and resources.',
     },
     { name: 'Admin - Contacts', description: 'Country contact submission management.' },
+    { name: 'Admin - Campaigns', description: 'Campaign management: create, list, update, delete, enable/disable.' },
+    { name: 'Admin - Stats', description: 'Dashboard analytics and platform statistics.' },
     { name: 'Public - Contact', description: 'Public contact submission endpoint.' },
   ],
   components: {
@@ -363,6 +365,101 @@ const openApiSpec = {
           email: { type: 'string', format: 'email' },
           subject: { type: 'string' },
           message: { type: 'string' },
+        },
+      },
+      CampaignStatus: {
+        type: 'string',
+        enum: ['draft', 'scheduled', 'running', 'closed'],
+      },
+      Campaign: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          campaignCode: { type: 'string' },
+          title: { type: 'string' },
+          beneficiaryName: { type: 'string' },
+          shortSummary: { type: 'string' },
+          story: { type: 'string' },
+          currency: { type: 'string', example: 'USD' },
+          status: { $ref: '#/components/schemas/CampaignStatus' },
+          goalAmount: { type: 'number' },
+          totalFundsRaised: { type: 'number' },
+          paystackSubAcctCode: { type: 'string', nullable: true },
+          showProgressPublicly: { type: 'boolean' },
+          isDisabled: { type: 'boolean' },
+          imageUrls: { type: 'array', items: { type: 'string', format: 'uri' } },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      CreateCampaignRequest: {
+        type: 'object',
+        required: ['campaignCode', 'title', 'beneficiaryName', 'shortSummary', 'story', 'currency', 'goalAmount'],
+        properties: {
+          campaignCode: { type: 'string' },
+          title: { type: 'string' },
+          beneficiaryName: { type: 'string' },
+          shortSummary: { type: 'string' },
+          story: { type: 'string' },
+          currency: { type: 'string', example: 'USD' },
+          status: { $ref: '#/components/schemas/CampaignStatus' },
+          goalAmount: { type: 'number' },
+          paystackSubAcctCode: { type: 'string', nullable: true },
+          showProgressPublicly: { type: 'boolean' },
+          imageUrls: { type: 'array', items: { type: 'string', format: 'uri' } },
+        },
+      },
+      UpdateCampaignRequest: {
+        type: 'object',
+        properties: {
+          campaignCode: { type: 'string' },
+          title: { type: 'string' },
+          beneficiaryName: { type: 'string' },
+          shortSummary: { type: 'string' },
+          story: { type: 'string' },
+          currency: { type: 'string' },
+          status: { $ref: '#/components/schemas/CampaignStatus' },
+          goalAmount: { type: 'number' },
+          totalFundsRaised: { type: 'number' },
+          paystackSubAcctCode: { type: 'string', nullable: true },
+          showProgressPublicly: { type: 'boolean' },
+          isDisabled: { type: 'boolean' },
+          imageUrls: { type: 'array', items: { type: 'string', format: 'uri' } },
+        },
+      },
+      CampaignListResponse: {
+        type: 'object',
+        properties: {
+          data: { type: 'array', items: { $ref: '#/components/schemas/Campaign' } },
+          meta: {
+            type: 'object',
+            properties: {
+              page: { type: 'integer' },
+              limit: { type: 'integer' },
+              total: { type: 'integer' },
+              totalPages: { type: 'integer' },
+            },
+          },
+        },
+      },
+      DashboardStats: {
+        type: 'object',
+        properties: {
+          data: {
+            type: 'object',
+            properties: {
+              totalBlogs: { type: 'integer' },
+              totalPrograms: { type: 'integer' },
+              totalUpdates: { type: 'integer' },
+              totalCareers: { type: 'integer' },
+              totalHeroContents: { type: 'integer' },
+              totalResources: { type: 'integer' },
+              totalContentItems: { type: 'integer' },
+              totalContactSubmissions: { type: 'integer' },
+              totalUsers: { type: 'integer' },
+              totalCampaigns: { type: 'integer' },
+            },
+          },
         },
       },
     },
@@ -865,6 +962,149 @@ const openApiSpec = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ContactSubmission' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/campaigns': {
+      get: {
+        tags: ['Admin - Campaigns'],
+        summary: 'List all campaigns',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/PageParam' },
+          { $ref: '#/components/parameters/LimitParam' },
+          { $ref: '#/components/parameters/SearchParam' },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { $ref: '#/components/schemas/CampaignStatus' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Campaign list',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CampaignListResponse' },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Admin - Campaigns'],
+        summary: 'Create a campaign',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreateCampaignRequest' },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Campaign created',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Campaign' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/campaigns/{id}': {
+      get: {
+        tags: ['Admin - Campaigns'],
+        summary: 'Get a campaign by ID',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/ContentIdParam' }],
+        responses: {
+          200: {
+            description: 'Campaign found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Campaign' },
+              },
+            },
+          },
+        },
+      },
+      patch: {
+        tags: ['Admin - Campaigns'],
+        summary: 'Update a campaign',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/ContentIdParam' }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/UpdateCampaignRequest' },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Campaign updated',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Campaign' },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ['Admin - Campaigns'],
+        summary: 'Delete a campaign',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/ContentIdParam' }],
+        responses: {
+          204: { description: 'Campaign deleted' },
+        },
+      },
+    },
+    '/admin/campaigns/{id}/toggle-disabled': {
+      patch: {
+        tags: ['Admin - Campaigns'],
+        summary: 'Toggle campaign enabled/disabled state',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ $ref: '#/components/parameters/ContentIdParam' }],
+        responses: {
+          200: {
+            description: 'Campaign toggled',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Campaign' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/admin/stats': {
+      get: {
+        tags: ['Admin - Stats'],
+        summary: 'Get dashboard statistics',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'country',
+            in: 'query',
+            schema: { $ref: '#/components/schemas/AdminContentCountry' },
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Dashboard stats',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DashboardStats' },
               },
             },
           },

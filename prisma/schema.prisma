@@ -48,6 +48,13 @@ enum ContactSubmissionStatus {
   ACKNOWLEDGED
 }
 
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  CLOSED
+}
+
 model User {
   id            String         @id @default(cuid())
   firstName     String         @map("first_name")
@@ -65,6 +72,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   createdContentItems ContentItem[] @relation("ContentItemsCreatedBy")
   updatedContentItems ContentItem[] @relation("ContentItemsUpdatedBy")
+  createdCampaigns    Campaign[]    @relation("CampaignsCreatedBy")
+  updatedCampaigns    Campaign[]    @relation("CampaignsUpdatedBy")
 
   @@index([role], map: "users_role_idx")
   @@map("users")
@@ -144,4 +153,30 @@ model ContactSubmission {
   @@index([country, status], map: "contact_submissions_country_status_idx")
   @@index([createdAt], map: "contact_submissions_created_at_idx")
   @@map("contact_submissions")
+}
+
+model Campaign {
+  id                   String         @id @default(cuid())
+  campaignCode         String         @unique @map("campaign_code")
+  title                String
+  beneficiaryName      String         @map("beneficiary_name")
+  shortSummary         String         @map("short_summary")
+  story                String         @db.Text
+  currency             String
+  status               CampaignStatus @default(DRAFT)
+  goalAmount           Float          @map("goal_amount")
+  totalFundsRaised     Float          @default(0) @map("total_funds_raised")
+  paystackSubAcctCode  String?        @map("paystack_sub_acct_code")
+  showProgressPublicly Boolean        @default(true) @map("show_progress_publicly")
+  isDisabled           Boolean        @default(false) @map("is_disabled")
+  imageUrls            String[]       @default([]) @map("image_urls")
+  createdById          String?        @map("created_by_id")
+  updatedById          String?        @map("updated_by_id")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+  createdBy            User?          @relation("CampaignsCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy            User?          @relation("CampaignsUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([status, isDisabled], map: "campaigns_status_is_disabled_idx")
+  @@map("campaigns")
 }
